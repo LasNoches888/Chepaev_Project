@@ -1,0 +1,12 @@
+release/main.o
+release/mainwindow.o
+release/gamewidget.o
+release/checker.o
+release/player.o
+release/gamelogic.o
+release/statsmanager.o
+release/settingsdialog.o
+release/moc_mainwindow.o
+release/moc_gamewidget.o
+release/moc_settingsdialog.o
+release/moc_statsmanager.o

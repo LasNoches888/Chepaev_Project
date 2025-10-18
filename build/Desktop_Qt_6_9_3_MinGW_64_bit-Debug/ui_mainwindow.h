@@ -13,6 +13,7 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QMenuBar>
+#include <QtWidgets/QPushButton>
 #include <QtWidgets/QStatusBar>
 #include <QtWidgets/QWidget>
 
@@ -22,6 +23,8 @@ class Ui_MainWindow
 {
 public:
     QWidget *centralwidget;
+    QPushButton *newGameButton;
+    QPushButton *exitButton;
     QMenuBar *menubar;
     QStatusBar *statusbar;
 
@@ -32,6 +35,12 @@ public:
         MainWindow->resize(800, 600);
         centralwidget = new QWidget(MainWindow);
         centralwidget->setObjectName("centralwidget");
+        newGameButton = new QPushButton(centralwidget);
+        newGameButton->setObjectName("newGameButton");
+        newGameButton->setGeometry(QRect(170, 200, 93, 29));
+        exitButton = new QPushButton(centralwidget);
+        exitButton->setObjectName("exitButton");
+        exitButton->setGeometry(QRect(470, 210, 93, 29));
         MainWindow->setCentralWidget(centralwidget);
         menubar = new QMenuBar(MainWindow);
         menubar->setObjectName("menubar");
@@ -49,6 +58,8 @@ public:
     void retranslateUi(QMainWindow *MainWindow)
     {
         MainWindow->setWindowTitle(QCoreApplication::translate("MainWindow", "MainWindow", nullptr));
+        newGameButton->setText(QCoreApplication::translate("MainWindow", "newGameButton", nullptr));
+        exitButton->setText(QCoreApplication::translate("MainWindow", "exitButton", nullptr));
     } // retranslateUi
 
 };
