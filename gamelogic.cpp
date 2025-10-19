@@ -163,12 +163,12 @@ void GameLogic::update(float dt)
         // Обновляем позицию
         c->pos += c->vel * dt;
 
-        // Границы поля - вылетают за пределы
-        if (c->pos.x() < boardLeft - 100 || c->pos.x() > boardLeft + boardSize + 100 ||
-            c->pos.y() < boardTop - 100 || c->pos.y() > boardTop + boardSize + 100)
+        // Границы поля - вылетают за пределы (ИСПРАВЛЕНО)
+        if (c->pos.x() < boardLeft - 50 || c->pos.x() > boardLeft + boardSize + 50 ||
+            c->pos.y() < boardTop - 50 || c->pos.y() > boardTop + boardSize + 50)
         {
             c->alive = false;
-            qDebug() << "Шашка вылетела за пределы";
+            qDebug() << "Шашка вылетела за пределы. Цвет:" << (c->color == Qt::white ? "белая" : "черная");
         }
     }
 

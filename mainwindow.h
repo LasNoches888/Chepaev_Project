@@ -21,7 +21,7 @@ protected:
 
 private slots:
     void startNewGame();
-    void showStats();
+    void resetStats();  // Новая функция
     void exitGame();
     void handleGameEnd(const QString &winner);
     void backToMenuFromGame();
@@ -32,7 +32,7 @@ private:
     GameWidget *gamePage;
 
     QPushButton *btnNewGame;
-    QPushButton *btnStats;
+    QPushButton *btnResetStats;  // Новая кнопка
     QPushButton *btnExit;
 
     void createMenuPage();

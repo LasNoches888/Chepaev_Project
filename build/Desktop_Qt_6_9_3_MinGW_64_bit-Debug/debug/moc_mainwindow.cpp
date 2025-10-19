@@ -42,7 +42,7 @@ template <> constexpr inline auto MainWindow::qt_create_metaobjectdata<qt_meta_t
         "MainWindow",
         "startNewGame",
         "",
-        "showStats",
+        "resetStats",
         "exitGame",
         "handleGameEnd",
         "winner",
@@ -52,7 +52,7 @@ template <> constexpr inline auto MainWindow::qt_create_metaobjectdata<qt_meta_t
     QtMocHelpers::UintData qt_methods {
         // Slot 'startNewGame'
         QtMocHelpers::SlotData<void()>(1, 2, QMC::AccessPrivate, QMetaType::Void),
-        // Slot 'showStats'
+        // Slot 'resetStats'
         QtMocHelpers::SlotData<void()>(3, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'exitGame'
         QtMocHelpers::SlotData<void()>(4, 2, QMC::AccessPrivate, QMetaType::Void),
@@ -86,7 +86,7 @@ void MainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
     if (_c == QMetaObject::InvokeMetaMethod) {
         switch (_id) {
         case 0: _t->startNewGame(); break;
-        case 1: _t->showStats(); break;
+        case 1: _t->resetStats(); break;
         case 2: _t->exitGame(); break;
         case 3: _t->handleGameEnd((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
         case 4: _t->backToMenuFromGame(); break;
