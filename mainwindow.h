@@ -2,19 +2,12 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QStackedWidget>
 #include <QPushButton>
-#include <QWidget>
+#include <QLabel>
 
-class GameWidget;      // вперёд объявляем, чтобы не подключать весь заголовок
-class StatsManager;
-class SettingsDialog;
+class GameWidget;
 
-/**
- * @brief Главное окно приложения "Чепаев"
- *
- * Содержит главное меню (с кнопками) и экран игры.
- * После окончания партии возвращает игрока в меню.
- */
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -23,31 +16,26 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
 private slots:
-    /// Начать новую игру
     void startNewGame();
-
-    /// Показать статистику
     void showStats();
-
-    /// Показать настройки
-    void showSettings();
-
-    /// Выйти из игры
     void exitGame();
+    void handleGameEnd(const QString &winner);
+    void backToMenuFromGame();
 
 private:
-    QWidget *menuWidget;     ///< Главное меню
-    GameWidget *gameWidget;  ///< Игровой экран
+    QStackedWidget *stack;
+    QWidget *menuPage;
+    GameWidget *gamePage;
 
     QPushButton *btnNewGame;
     QPushButton *btnStats;
-    QPushButton *btnSettings;
     QPushButton *btnExit;
 
-    void createMenu();   ///< Создаёт меню
-    void showMenu();     ///< Показывает меню
-    void showGame();     ///< Показывает экран игры
+    void createMenuPage();
 };
 
 #endif // MAINWINDOW_H

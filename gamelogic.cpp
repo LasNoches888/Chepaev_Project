@@ -1,132 +1,387 @@
 #include "gamelogic.h"
 #include <cmath>
-#include <algorithm>
-#include <random>
-#include <limits>
+#include <QDebug>
 
 GameLogic::GameLogic()
-    : whitePlayer("Белые", false),
-    blackPlayer("Чёрные (бот)", true),
-    boardLeft(50),
-    boardTop(50),
-    boardSize(700)
+    : boardLeft(100), boardTop(100), boardSize(600),
+    winnerColor(""), gameOver(false)
 {
 }
 
 float GameLogic::length(const QPointF &v) const {
-    return std::sqrt(v.x() * v.x() + v.y() * v.y());
+    return std::sqrt(v.x()*v.x() + v.y()*v.y());
 }
 
-void GameLogic::initBoard() {
+void GameLogic::initBoard()
+{
     checkers.clear();
+    initialPositions.clear(); // Очищаем начальные позиции
+
     const float cell = boardSize / 8.0f;
 
-    // создаём по 6 шашек каждой стороны в два ряда
-    for (int i = 0; i < 6; ++i) {
-        QPointF p1(boardLeft + cell * (i + 1), boardTop + cell * 1.0);
-        QPointF p2(boardLeft + cell * (i + 1), boardTop + cell * 6.0);
-        checkers.push_back(std::make_shared<Checker>(p1, Qt::white));
-        checkers.push_back(std::make_shared<Checker>(p2, Qt::black));
+    qDebug() << "=== ИНИЦИАЛИЗАЦИЯ ДОСКИ ===";
+    qDebug() << "Размер доски:" << boardSize;
+    qDebug() << "Позиция доски:" << boardLeft << boardTop;
+    qDebug() << "Размер ячейки:" << cell;
+
+    // БЕЛЫЕ ШАШКИ (нижние 2 ряда для игрока)
+    int checkerCount = 0;
+    for (int row = 0; row < 2; ++row) {
+        for (int col = 0; col < 4; ++col) {
+            // Правильное расположение в шахматном порядке
+            int actualRow = 6 + row; // 6 и 7 ряды (нижние)
+            int actualCol = col * 2 + ((row % 2 == 0) ? 1 : 0);
+
+            float x = boardLeft + cell * (actualCol + 0.5f);
+            float y = boardTop + cell * (actualRow + 0.5f);
+
+            QPointF pos(x, y);
+            checkers.push_back(std::make_shared<Checker>(pos, Qt::white));
+            // Сохраняем относительную позицию (0-1 относительно доски)
+            float relX = (x - boardLeft) / boardSize;
+            float relY = (y - boardTop) / boardSize;
+            initialPositions.push_back(QPointF(relX, relY));
+
+            checkerCount++;
+            qDebug() << "Белая шашка" << checkerCount << "позиция:" << pos << "относительная:" << relX << relY;
+        }
     }
 
-    whitePlayer.score = 0;
-    blackPlayer.score = 0;
+    // ЧЕРНЫЕ ШАШКИ (верхние 2 ряда для бота)
+    for (int row = 0; row < 2; ++row) {
+        for (int col = 0; col < 4; ++col) {
+            // Правильное расположение в шахматном порядке
+            int actualRow = row; // 0 и 1 ряды (верхние)
+            int actualCol = col * 2 + ((row % 2 == 0) ? 1 : 0);
+
+            float x = boardLeft + cell * (actualCol + 0.5f);
+            float y = boardTop + cell * (actualRow + 0.5f);
+
+            QPointF pos(x, y);
+            checkers.push_back(std::make_shared<Checker>(pos, Qt::black));
+            // Сохраняем относительную позицию (0-1 относительно доски)
+            float relX = (x - boardLeft) / boardSize;
+            float relY = (y - boardTop) / boardSize;
+            initialPositions.push_back(QPointF(relX, relY));
+
+            checkerCount++;
+            qDebug() << "Черная шашка" << checkerCount << "позиция:" << pos << "относительная:" << relX << relY;
+        }
+    }
+
+    gameOver = false;
+    winnerColor = "";
+
+    qDebug() << "=== ДОСКА ИНИЦИАЛИЗИРОВАНА ===";
+    qDebug() << "Всего шашек:" << checkers.size();
+    qDebug() << "Белых:" << getWhiteCheckers().size()
+             << "Черных:" << getBlackCheckers().size();
 }
 
-void GameLogic::handleCollisions() {
+// НОВЫЙ МЕТОД: обновление позиций шашек при изменении размера доски
+void GameLogic::updateCheckerPositions()
+{
+    // Обновляем только если шашки не двигаются
+    if (isMoving()) return;
+
     const float cell = boardSize / 8.0f;
-    const float radius = cell * 0.4f;
 
-    // столкновения между шашками (простая физика)
-    for (size_t i = 0; i < checkers.size(); ++i) {
-        for (size_t j = i + 1; j < checkers.size(); ++j) {
-            auto &a = checkers[i];
-            auto &b = checkers[j];
-            if (!a->alive || !b->alive) continue;
+    for (int i = 0; i < checkers.size(); ++i) {
+        if (!checkers[i]->alive) continue;
 
-            QPointF diff = b->pos - a->pos;
-            float dist = length(diff);
-            if (dist > 0 && dist < 2 * radius) {
-                QPointF n = diff / dist;
-                float overlap = 2 * radius - dist;
-                a->pos -= n * (overlap / 2.0);
-                b->pos += n * (overlap / 2.0);
+        // Восстанавливаем позицию из относительных координат
+        float x = boardLeft + initialPositions[i].x() * boardSize;
+        float y = boardTop + initialPositions[i].y() * boardSize;
 
-                // обмен скоростями
-                QPointF va = a->vel;
-                a->vel = b->vel;
-                b->vel = va;
+        checkers[i]->pos = QPointF(x, y);
+        checkers[i]->vel = QPointF(0, 0); // Сбрасываем скорость
+    }
+
+    qDebug() << "Позиции шашек обновлены под новый размер доски:" << boardSize;
+}
+
+void GameLogic::drawBoard(QPainter *p)
+{
+    const float cell = boardSize / 8.0f;
+
+    // Рисуем клетки доски
+    for (int row = 0; row < 8; ++row) {
+        for (int col = 0; col < 8; ++col) {
+            QRectF cellRect(
+                boardLeft + col * cell,
+                boardTop + row * cell,
+                cell,
+                cell
+                );
+
+            // Чередуем цвета клеток
+            if ((row + col) % 2 == 0) {
+                p->fillRect(cellRect, QColor(240, 217, 181)); // Светлые клетки
+            } else {
+                p->fillRect(cellRect, QColor(181, 136, 99));  // Темные клетки
             }
         }
     }
 
-    // удаление шашек, вылетевших за пределы
+    // Рамка доски
+    p->setPen(QPen(Qt::black, 3));
+    p->drawRect(boardLeft, boardTop, boardSize, boardSize);
+
+    // Рисуем шашки
+    const float radius = cell * 0.4f;
     for (auto &c : checkers) {
         if (!c->alive) continue;
-        if (c->pos.x() < boardLeft || c->pos.x() > boardLeft + boardSize ||
-            c->pos.y() < boardTop || c->pos.y() > boardTop + boardSize) {
-            c->alive = false;
-            if (c->color == Qt::white)
-                blackPlayer.score++;
-            else
-                whitePlayer.score++;
+
+        // Основной круг шашки
+        p->setBrush(c->color);
+        p->setPen(QPen(Qt::black, 2));
+        p->drawEllipse(c->pos, radius, radius);
+
+        // Добавляем ободок для лучшего визуального эффекта
+        if (c->color == Qt::white) {
+            p->setPen(QPen(QColor(200, 200, 200), 1));
+            p->drawEllipse(c->pos, radius - 2, radius - 2);
+        } else {
+            p->setPen(QPen(QColor(50, 50, 50), 1));
+            p->drawEllipse(c->pos, radius - 2, radius - 2);
         }
     }
 }
+
+// ... остальные методы без изменений ...
 
 void GameLogic::update(float dt)
 {
+    if (gameOver) return;
+
     for (auto &c : checkers) {
         if (!c->alive) continue;
+
+        // Применяем трение
+        c->vel *= 0.98f;
+
+        // Обновляем позицию
         c->pos += c->vel * dt;
-        c->vel *= 0.98f; // трение
-    }
 
-    handleCollisions();
-}
-
-void GameLogic::botMakeMove()
-{
-    // собираем живые шашки
-    std::vector<std::shared_ptr<Checker>> botPieces;
-    std::vector<std::shared_ptr<Checker>> whitePieces;
-    for (auto &c : checkers) {
-        if (!c->alive) continue;
-        if (c->color == Qt::black)
-            botPieces.push_back(c);
-        else
-            whitePieces.push_back(c);
-    }
-
-    if (botPieces.empty() || whitePieces.empty()) return;
-
-    // выбираем шашку бота
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> botDist(0, botPieces.size() - 1);
-    auto botChecker = botPieces[botDist(gen)];
-
-    // ищем ближайшую белую шашку
-    std::shared_ptr<Checker> target = nullptr;
-    float minDist = std::numeric_limits<float>::max();
-    for (auto &w : whitePieces) {
-        float d = length(w->pos - botChecker->pos);
-        if (d < minDist) {
-            minDist = d;
-            target = w;
+        // Границы поля - вылетают за пределы
+        if (c->pos.x() < boardLeft - 100 || c->pos.x() > boardLeft + boardSize + 100 ||
+            c->pos.y() < boardTop - 100 || c->pos.y() > boardTop + boardSize + 100)
+        {
+            c->alive = false;
+            qDebug() << "Шашка вылетела за пределы";
         }
     }
 
-    if (!target) return;
+    // Обрабатываем столкновения
+    handleCollisions();
+}
 
-    // направление на цель
-    QPointF dir = target->pos - botChecker->pos;
-    float len = length(dir);
-    if (len < 1e-3f) return;
+void GameLogic::handleCollisions()
+{
+    const float cell = boardSize / 8.0f;
+    const float radius = cell * 0.4f;
 
-    dir /= len;
+    for (int i = 0; i < checkers.size(); ++i) {
+        auto &a = checkers[i];
+        if (!a->alive) continue;
 
-    // сила удара
-    float impulsePower = 300.0f + (float)(rand() % 150);
-    botChecker->vel = dir * impulsePower * 0.02f;
+        for (int j = i + 1; j < checkers.size(); ++j) {
+            auto &b = checkers[j];
+            if (!b->alive) continue;
+
+            QPointF diff = b->pos - a->pos;
+            float dist = length(diff);
+            if (dist > 0 && dist < 2 * radius) {
+                // Столкновение
+                QPointF n = diff / dist;
+                float overlap = 2 * radius - dist;
+
+                // Раздвигаем шашки
+                a->pos -= n * overlap / 2.0f;
+                b->pos += n * overlap / 2.0f;
+
+                // Обмен скоростями
+                QPointF relativeVelocity = b->vel - a->vel;
+                float velocityAlongNormal = relativeVelocity.x() * n.x() + relativeVelocity.y() * n.y();
+
+                if (velocityAlongNormal > 0) continue;
+
+                float restitution = 0.8f;
+                float impulse = -(1.0f + restitution) * velocityAlongNormal / 2.0f;
+
+                QPointF impulseVector = n * impulse;
+                a->vel -= impulseVector;
+                b->vel += impulseVector;
+            }
+        }
+    }
+}
+
+void GameLogic::shoot(int checkerIndex, const QPointF &force)
+{
+    if (gameOver || checkerIndex < 0 || checkerIndex >= checkers.size()) return;
+
+    auto &c = checkers[checkerIndex];
+    if (c->alive) {
+        c->vel = force;
+        qDebug() << "Выстрел по шашке" << checkerIndex << "сила:" << force;
+    }
+}
+
+bool GameLogic::checkGameOver() const
+{
+    int whiteAlive = 0;
+    int blackAlive = 0;
+
+    for (auto &c : checkers) {
+        if (c->alive) {
+            if (c->color == Qt::white) whiteAlive++;
+            else blackAlive++;
+        }
+    }
+
+    qDebug() << "Проверка окончания игры. Белые:" << whiteAlive << "Черные:" << blackAlive;
+
+    // Игра заканчивается только если у одной из сторон не осталось шашек
+    bool gameEnded = (whiteAlive == 0 || blackAlive == 0);
+
+    if (gameEnded) {
+        qDebug() << "=== ИГРА ОКОНЧЕНА ===";
+        qDebug() << "Белых осталось:" << whiteAlive;
+        qDebug() << "Черных осталось:" << blackAlive;
+    }
+
+    return gameEnded;
+}
+
+QString GameLogic::winner() const
+{
+    int whiteAlive = 0;
+    int blackAlive = 0;
+    for (auto &c : checkers) {
+        if (c->alive) {
+            if (c->color == Qt::white) whiteAlive++;
+            else blackAlive++;
+        }
+    }
+
+    qDebug() << "Определение победителя. Белые:" << whiteAlive << "Черные:" << blackAlive;
+
+    if (whiteAlive == 0 && blackAlive == 0) {
+        qDebug() << "НИЧЬЯ - все шашки выбиты";
+        return "draw";
+    }
+    if (whiteAlive == 0) {
+        qDebug() << "ПОБЕДА ЧЕРНЫХ";
+        return "black";
+    }
+    if (blackAlive == 0) {
+        qDebug() << "ПОБЕДА БЕЛЫХ";
+        return "white";
+    }
+
+    qDebug() << "Игра продолжается";
+    return "none";
+}
+
+bool GameLogic::isMoving() const
+{
+    for (auto &c : checkers) {
+        if (c->alive && length(c->vel) > 0.5f) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int GameLogic::getCheckerAtPosition(const QPointF &pos) const
+{
+    const float cell = boardSize / 8.0f;
+    const float radius = cell * 0.4f;
+
+    for (int i = 0; i < checkers.size(); ++i) {
+        auto &c = checkers[i];
+        if (!c->alive) continue;
+
+        float dist = length(pos - c->pos);
+        if (dist <= radius) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+QColor GameLogic::getCheckerColor(int index) const
+{
+    if (index >= 0 && index < checkers.size()) {
+        return checkers[index]->color;
+    }
+    return Qt::transparent;
+}
+
+QPointF GameLogic::getCheckerPosition(int index) const
+{
+    if (index >= 0 && index < checkers.size()) {
+        return checkers[index]->pos;
+    }
+    return QPointF(0, 0);
+}
+
+QVector<int> GameLogic::getBlackCheckers() const
+{
+    QVector<int> result;
+    for (int i = 0; i < checkers.size(); ++i) {
+        if (checkers[i]->alive && checkers[i]->color == Qt::black) {
+            result.push_back(i);
+        }
+    }
+    return result;
+}
+
+QVector<int> GameLogic::getWhiteCheckers() const
+{
+    QVector<int> result;
+    for (int i = 0; i < checkers.size(); ++i) {
+        if (checkers[i]->alive && checkers[i]->color == Qt::white) {
+            result.push_back(i);
+        }
+    }
+    return result;
+}
+
+float GameLogic::evaluateMove(int checkerIndex, const QPointF &force) const
+{
+    if (checkerIndex < 0 || checkerIndex >= checkers.size()) return -1000;
+
+    auto checker = checkers[checkerIndex];
+    if (!checker->alive) return -1000;
+
+    float score = length(force);
+
+    // Штраф за вылет за пределы
+    QPointF predictedPos = checker->pos + force * 0.1f;
+    if (predictedPos.x() < boardLeft || predictedPos.x() > boardLeft + boardSize ||
+        predictedPos.y() < boardTop || predictedPos.y() > boardTop + boardSize) {
+        score -= 100;
+    }
+
+    return score;
+}
+
+QPointF GameLogic::predictPosition(const QPointF &startPos, const QPointF &startVel, float time) const
+{
+    QPointF pos = startPos;
+    QPointF vel = startVel;
+
+    for (float t = 0; t < time; t += 0.1f) {
+        vel *= 0.99f;
+        pos += vel * 0.1f;
+
+        if (pos.x() < boardLeft || pos.x() > boardLeft + boardSize ||
+            pos.y() < boardTop || pos.y() > boardTop + boardSize) {
+            break;
+        }
+    }
+
+    return pos;
 }

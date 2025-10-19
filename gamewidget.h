@@ -3,45 +3,42 @@
 
 #include <QWidget>
 #include <QTimer>
-#include <memory>
 #include "gamelogic.h"
-#include <QPointF>
 
 class GameWidget : public QWidget
 {
-    Q_OBJECT                  // <- обязательно, чтобы moc сгенерировал код
+    Q_OBJECT
 
 public:
     explicit GameWidget(QWidget *parent = nullptr);
-    ~GameWidget() override = default;
-
-    void setPaused(bool p) { paused = p; }
+    QSize sizeHint() const override;
 
 signals:
-    // Сообщает MainWindow кто победил: "white", "black" или "draw"
     void gameEnded(const QString &winner);
-
-protected:
-    void paintEvent(QPaintEvent *event) override;
-    void mousePressEvent(QMouseEvent *event) override;
-    void mouseReleaseEvent(QMouseEvent *event) override;
+    void backToMenuClicked();
 
 private slots:
     void onFrame();
+    void makeBotMove();
+
+protected:
+    void paintEvent(QPaintEvent *) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private:
     GameLogic logic;
-    QTimer timer;
-    std::shared_ptr<Checker> selectedChecker;
+    QTimer gameTimer;
+    bool dragging;
+    bool playerTurn;
+    int selectedChecker;
     QPointF dragStart;
-    bool dragging = false;
-    bool paused = false;
-    int left = 50, top = 50, size = 700;
-    float cell() const { return size / 8.0f; }
-    float radius() const { return cell() * 0.4f; }
+    QPointF currentMouse;
+    bool menuButtonHovered;
 
-    void playerShoot(std::shared_ptr<Checker> c, QPointF impulse);
-    void checkEndCondition();
+    void updateBoardGeometry();
 };
 
 #endif // GAMEWIDGET_H

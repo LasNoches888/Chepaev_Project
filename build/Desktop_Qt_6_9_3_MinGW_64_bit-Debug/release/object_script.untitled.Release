@@ -6,6 +6,7 @@ release/player.o
 release/gamelogic.o
 release/statsmanager.o
 release/settingsdialog.o
+release/qrc_menu.o
 release/moc_mainwindow.o
 release/moc_gamewidget.o
 release/moc_settingsdialog.o

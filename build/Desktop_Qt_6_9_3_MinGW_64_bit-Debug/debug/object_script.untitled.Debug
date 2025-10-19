@@ -6,6 +6,7 @@ debug/player.o
 debug/gamelogic.o
 debug/statsmanager.o
 debug/settingsdialog.o
+debug/qrc_menu.o
 debug/moc_mainwindow.o
 debug/moc_gamewidget.o
 debug/moc_settingsdialog.o

@@ -4,37 +4,32 @@
 #include <QObject>
 #include <QSettings>
 
-/**
- * @brief Класс для сохранения и загрузки статистики игр.
- *
- * Сохраняет количество сыгранных игр, побед белых, побед чёрных и ничьих.
- * Использует QSettings, чтобы статистика сохранялась между запусками.
- */
 class StatsManager : public QObject
 {
     Q_OBJECT
 public:
     explicit StatsManager(QObject *parent = nullptr);
 
-    void load();
-    void save() const;
+    void addGameResult(const QString &winner); // "white", "black", "draw"
+    void reset();
 
-    void addGamePlayed();
-    void addWhiteWin();
-    void addBlackWin();
-    void addDraw();
-
-    // 🔹 Публичные методы доступа:
     int totalGames() const { return m_totalGames; }
-    int whiteWins()  const { return m_whiteWins; }
-    int blackWins()  const { return m_blackWins; }
-    int draws()      const { return m_draws; }
+    int whiteWins() const { return m_whiteWins; }
+    int blackWins() const { return m_blackWins; }
+    int draws() const { return m_draws; }
+
+    double whiteWinPercent() const;
+    double blackWinPercent() const;
+    double drawPercent() const;
 
 private:
     int m_totalGames;
     int m_whiteWins;
     int m_blackWins;
     int m_draws;
+
+    void load();
+    void save() const;
 };
 
 #endif // STATSMANAGER_H
