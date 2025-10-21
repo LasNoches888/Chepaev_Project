@@ -78,64 +78,7 @@ void GameLogic::initBoard()
              << "Черных:" << getBlackCheckers().size();
 }
 
-// НОВЫЙ МЕТОД: масштабирование позиций при смене геометрии доски
-void GameLogic::rescaleBoard(float oldLeft, float oldTop, float oldSize,
-                             float newLeft, float newTop, float newSize)
-{
-    if (oldSize <= 0.0f) {
-        // если старый размер некорректен — просто обновляем начальные относительные позиции по текущему состоянию
-        for (int i = 0; i < checkers.size(); ++i) {
-            if (!checkers[i]) continue;
-            QPointF p = checkers[i]->pos;
-            float relX = (p.x() - newLeft) / newSize;
-            float relY = (p.y() - newTop) / newSize;
-            if (i < initialPositions.size()) initialPositions[i] = QPointF(relX, relY);
-            else initialPositions.push_back(QPointF(relX, relY));
-        }
-        boardLeft = newLeft;
-        boardTop = newTop;
-        boardSize = newSize;
-        return;
-    }
-
-    float scale = newSize / oldSize;
-    float dx = newLeft - oldLeft * scale;
-    float dy = newTop - oldTop * scale;
-
-    // Вместо грубого перерасчёта относительно старой начальной сетки, мы масштабируем текущие позиции
-    for (int i = 0; i < checkers.size(); ++i) {
-        auto &c = checkers[i];
-        if (!c) continue;
-        // относительные по старой геометрии
-        float relX_old = (c->pos.x() - oldLeft) / oldSize;
-        float relY_old = (c->pos.y() - oldTop) / oldSize;
-
-        // новый абсолютный
-        float newX = newLeft + relX_old * newSize;
-        float newY = newTop + relY_old * newSize;
-
-        c->pos = QPointF(newX, newY);
-        // скорости тоже масштабируем (чтобы эффект перемещения оставался согласованным)
-        c->vel *= scale;
-
-        // корректируем сохранённые относительные начальные позиции
-        if (i < initialPositions.size()) {
-            initialPositions[i] = QPointF((c->pos.x() - newLeft) / newSize,
-                                          (c->pos.y() - newTop) / newSize);
-        } else {
-            initialPositions.push_back(QPointF((c->pos.x() - newLeft) / newSize,
-                                               (c->pos.y() - newTop) / newSize));
-        }
-    }
-
-    boardLeft = newLeft;
-    boardTop = newTop;
-    boardSize = newSize;
-
-    qDebug() << "rescaleBoard: oldSize=" << oldSize << " newSize=" << newSize << " scale=" << scale;
-}
-
-// НОВЫЙ: обновление позиций шашек при изменении размера доски
+// НОВЫЙ МЕТОД: обновление позиций шашек при изменении размера доски
 void GameLogic::updateCheckerPositions()
 {
     // Обновляем только если шашки не двигаются
@@ -210,6 +153,11 @@ void GameLogic::update(float dt)
 {
     if (gameOver) return;
 
+    const float cell = boardSize / 8.0f;
+    const float radius = cell * 0.4f;
+
+    // Применяем физику движения и помечаем шашки как неактивные, как только центр шашки
+    // полностью ушёл за пределы доски (т.е. шашка полностью покинула игровую область).
     for (auto &c : checkers) {
         if (!c->alive) continue;
 
@@ -219,16 +167,24 @@ void GameLogic::update(float dt)
         // Обновляем позицию
         c->pos += c->vel * dt;
 
-        // Жёсткая проверка выхода за границы доски: если вышли за пределы — помечаем как неактивную
-        if (c->pos.x() < boardLeft || c->pos.x() > boardLeft + boardSize ||
-            c->pos.y() < boardTop  || c->pos.y() > boardTop  + boardSize)
-        {
+        // Пометка неактивной, как только шашка полностью покинула игровое поле
+        // (центр +/− радиус за пределами границ).
+        bool leftOfBoard   = (c->pos.x() + radius) < boardLeft;
+        bool rightOfBoard  = (c->pos.x() - radius) > (boardLeft + boardSize);
+        bool aboveBoard    = (c->pos.y() + radius) < boardTop;
+        bool belowBoard    = (c->pos.y() - radius) > (boardTop + boardSize);
+
+        if (leftOfBoard || rightOfBoard || aboveBoard || belowBoard) {
             c->alive = false;
-            c->vel = QPointF(0,0); // обнуляем скорость, чтобы объект не двигался дальше
-            qDebug() << "Шашка вылетела за пределы и помечена как неактивная. Цвет:"
+            c->vel = QPointF(0,0);
+            qDebug() << "Шашка полностью покинула поле и помечена как неактивная. Цвет:"
                      << (c->color == Qt::white ? "белая" : "черная") << "поз:" << c->pos;
             continue;
         }
+
+        // Небольшие "подтягивания" больше не выполняются - шашки могут выезжать.
+        // При этом, если шашка немного ушла за край (но ещё не полностью),
+        // она остаётся активной и может вернуться обратно в результате столкновений.
     }
 
     // Обрабатываем столкновения (только между живыми шашками)
@@ -283,109 +239,63 @@ BotMove GameLogic::findBestMove(QColor botColor) const
     // Получаем шашки бота
     QVector<int> botCheckers = (botColor == Qt::black) ? getBlackCheckers() : getWhiteCheckers();
 
-    // Целевые шашки врага
-    QVector<int> enemyCheckers = (botColor == Qt::black) ? getWhiteCheckers() : getBlackCheckers();
+    if (botCheckers.isEmpty()) return {-1, QPointF(0,0), -1000};
 
-    if (botCheckers.isEmpty()) {
-        return {-1, QPointF(0,0), -1000};
-    }
-
-    // Параметры поиска в зависимости от сложности
-    int angleStep = 30;
-    int powerSamples = 3;
+    // Подбираем параметры с уклоном по сложности: чем сложнее — тем уже область поиска углов
+    float angleSpreadDeg = 45.0f;
+    int powerMin = 100;
+    int powerMax = 300;
     switch (botDifficulty) {
-    case Easy: angleStep = 60; powerSamples = 1; break;
-    case Medium: angleStep = 30; powerSamples = 3; break;
-    case Hard: angleStep = 10; powerSamples = 6; break;
+    case Easy:   angleSpreadDeg = 90.0f; powerMin = 90;  powerMax = 220; break;
+    case Medium: angleSpreadDeg = 45.0f; powerMin = 120; powerMax = 320; break;
+    case Hard:   angleSpreadDeg = 22.0f; powerMin = 140; powerMax = 400; break;
     default: break;
     }
 
-    const float cell = boardSize / 8.0f;
-    const float radius = cell * 0.4f;
+    // Для каждой шашки бота: вычисляем направление на ближайшего врага и пробуем углы вокруг него
+    for (int checkerIndex : botCheckers) {
+        QPointF startPos = getCheckerPosition(checkerIndex);
 
-    // Для каждого бот-чекера пробуем ходы, прицеливаясь в ближайшую вражескую шашку (если есть)
-    for (int bi : botCheckers) {
-        if (!isCheckerAlive(bi)) continue;
-        QPointF startPos = getCheckerPosition(bi);
-
-        // Выбираем несколько приоритетных целей (ближайшие)
-        QVector<int> targets = enemyCheckers;
-        std::sort(targets.begin(), targets.end(), [&](int a, int b){
-            float da = length(getCheckerPosition(a) - startPos);
-            float db = length(getCheckerPosition(b) - startPos);
-            return da < db;
-        });
-
-        if (targets.isEmpty()) {
-            // если целей нет — стреляем в центр
-            targets.push_back(bi);
+        // находим ближайшую вражескую шашку как цель
+        QColor enemyColor = (botColor == Qt::black) ? Qt::white : Qt::black;
+        float bestD = 1e9f;
+        QPointF targetPos = startPos + QPointF(0, boardSize * 0.2f); // если врагов нет — двигаться "вперёд" по Y
+        for (int i = 0; i < checkers.size(); ++i) {
+            if (!checkers[i]->alive || checkers[i]->color != enemyColor) continue;
+            QPointF p = checkers[i]->pos;
+            float d = length(p - startPos);
+            if (d < bestD) { bestD = d; targetPos = p; }
         }
 
-        // ограничим число целей, чтобы не гоняться за всеми
-        int maxTargets = qMin(3, targets.size());
-        for (int ti = 0; ti < maxTargets; ++ti) {
-            int targetIndex = targets[ti];
-            QPointF targetPos = getCheckerPosition(targetIndex);
+        QPointF dir = targetPos - startPos;
+        float dirLen = length(dir);
+        if (dirLen > 0.0001f) dir /= dirLen;
+        else dir = QPointF(0.0f, (botColor == Qt::black) ? 1.0f : -1.0f);
 
-            QPointF idealDir = targetPos - startPos;
-            float dist = length(idealDir);
-            if (dist > 0) idealDir /= dist;
-            else idealDir = QPointF(0, 1);
+        // базовый угол в градусах
+        float baseAngle = std::atan2(dir.y(), dir.x()) * 180.0f / 3.14159265f;
 
-            // базовая сила — пропорциональна расстоянию
-            float basePower = qBound(80.0f, dist * 0.7f, 500.0f);
+        // пробуем несколько углов вокруг базового направления
+        int angleSteps = 8;
+        for (int s = -angleSteps; s <= angleSteps; ++s) {
+            float frac = (float)s / (float)angleSteps;
+            float angleDeg = baseAngle + frac * angleSpreadDeg;
+            float rad = angleDeg * 3.14159265f / 180.0f;
 
-            // пробуем углы вокруг идеальной линии, и несколько сил
-            int halfRangeDeg = 40;
-            for (int a = -halfRangeDeg; a <= halfRangeDeg; a += angleStep) {
-                float rad = a * 3.14159265f / 180.0f;
-                float cosA = std::cos(rad);
-                float sinA = std::sin(rad);
-                QPointF dirRot(idealDir.x()*cosA - idealDir.y()*sinA,
-                               idealDir.x()*sinA + idealDir.y()*cosA);
+            // перебор силы
+            for (int power = powerMin; power <= powerMax; power += (powerMax - powerMin) / 3 + 1) {
+                QPointF force(std::cos(rad) * power, std::sin(rad) * power);
 
-                for (int p = 0; p < powerSamples; ++p) {
-                    float frac = (powerSamples > 1) ? (float)p / (powerSamples - 1) : 0.5f;
-                    float powerMult = 0.85f + 0.3f * (frac - 0.5f); // немного варьируем силу
-                    QPointF force = dirRot * (basePower * powerMult);
+                float score = evaluateMove(checkerIndex, force);
 
-                    // предсказываем позицию через короткое время с учётом трения
-                    QPointF predicted = predictPosition(startPos, force, 2.0f);
+                // Доп. бонусы/штрафы уже считаются в evaluateMove — тут можно добавить ещё эвристики при желании
 
-                    // оценка: расстояние до целевой шашки + бонусы за попадения по другим
-                    float score = length(force); // базовый приоритет — сила (чтобы бить)
-                    // штраф за вылет из доски
-                    if (predicted.x() < boardLeft || predicted.x() > boardLeft + boardSize ||
-                        predicted.y() < boardTop || predicted.y() > boardTop + boardSize) {
-                        score -= 150;
-                    } else {
-                        score += 20; // небольшая награда за оставание на доске
-                    }
-
-                    // Бонусы за близость к цели и потенциальные попадания по другим
-                    int hitCandidates = 0;
-                    for (int ei = 0; ei < checkers.size(); ++ei) {
-                        if (!checkers[ei]->alive) continue;
-                        if (checkers[ei]->color == botColor) continue; // свои — не считаем
-                        QPointF ep = checkers[ei]->pos;
-                        float d = length(predicted - ep);
-                        if (d < radius * 1.6f) {
-                            score += 80.0f; // сильный бонус за потенциальный прямой удар
-                            hitCandidates++;
-                        } else if (d < radius * 3.0f) {
-                            score += 18.0f; // небольшой бонус за близкую атаку
-                        }
-                    }
-
-                    // бонус за многопопадание
-                    if (hitCandidates > 1) score += hitCandidates * 25.0f;
-
-                    possibleMoves.push_back({bi, force, score});
-                }
+                possibleMoves.push_back({checkerIndex, force, score});
             }
         }
     }
 
+    // Выбираем лучший ход
     if (possibleMoves.isEmpty()) {
         return {-1, QPointF(0, 0), -1000};
     }
@@ -542,15 +452,53 @@ float GameLogic::evaluateMove(int checkerIndex, const QPointF &force) const
     auto checker = checkers[checkerIndex];
     if (!checker->alive) return -1000;
 
-    float score = length(force);
+    const float cell = boardSize / 8.0f;
+    const float radius = cell * 0.4f;
 
-    // Штраф за вылет за пределы
-    QPointF predictedPos = checker->pos + force * 0.1f;
-    if (predictedPos.x() < boardLeft || predictedPos.x() > boardLeft + boardSize ||
-        predictedPos.y() < boardTop || predictedPos.y() > boardTop + boardSize) {
-        score -= 100;
+    // Базовая ценность силы — но не делаем силу единственным критерием
+    float score = 0.2f * length(force);
+
+    // Предсказываем позицию через небольшой промежуток времени (чтобы понять, попадём ли в противника)
+    QPointF predictedPos = predictPosition(checker->pos, force, 0.8f);
+
+    // Штраф за вылет за пределы (как только шашка полностью покинет поле, оцениваем это плохо)
+    bool willLeaveLeft   = (predictedPos.x() + radius) < boardLeft;
+    bool willLeaveRight  = (predictedPos.x() - radius) > (boardLeft + boardSize);
+    bool willLeaveAbove  = (predictedPos.y() + radius) < boardTop;
+    bool willLeaveBelow  = (predictedPos.y() - radius) > (boardTop + boardSize);
+
+    if (willLeaveLeft || willLeaveRight || willLeaveAbove || willLeaveBelow) {
+        score -= 250.0f; // существенный штраф — бот должен избегать потери шашки
+    } else {
+        score += 20.0f; // бонус за то, что шашка останется на доске
     }
 
+    // Бонус за потенциальный удар по вражеской шашке
+    QColor enemyColor = (checker->color == Qt::black) ? Qt::white : Qt::black;
+    float bestDist = 1e9f;
+    int potentialHits = 0;
+    for (int i = 0; i < checkers.size(); ++i) {
+        if (!checkers[i]->alive || checkers[i]->color != enemyColor) continue;
+        QPointF enemyPos = checkers[i]->pos;
+        float d = length(predictedPos - enemyPos);
+        if (d < bestDist) bestDist = d;
+        if (d < radius * 1.4f) potentialHits++;
+    }
+    if (potentialHits > 0) {
+        // сильный бонус за возможность попасть в противника
+        score += 220.0f + potentialHits * 80.0f;
+    } else {
+        // если близко к вражеской шашке — небольшой бонус
+        if (bestDist < radius * 4.0f) score += 60.0f;
+    }
+
+    // Небольшая штрафная поправка за слишком "сильную" силу, если это не ведёт к атаке
+    if (potentialHits == 0) {
+        float fmag = length(force);
+        if (fmag > 350.0f) score -= (fmag - 350.0f) * 0.25f;
+    }
+
+    // Возвращаем комбинированную оценку
     return score;
 }
 
@@ -559,12 +507,16 @@ QPointF GameLogic::predictPosition(const QPointF &startPos, const QPointF &start
     QPointF pos = startPos;
     QPointF vel = startVel;
 
-    for (float t = 0; t < time; t += 0.1f) {
+    // Простая имитация движения с трением; если покинет поле — прекращаем
+    const float dt = 0.05f;
+    for (float t = 0; t < time; t += dt) {
         vel *= 0.99f;
-        pos += vel * 0.1f;
+        pos += vel * dt;
 
-        if (pos.x() < boardLeft || pos.x() > boardLeft + boardSize ||
-            pos.y() < boardTop || pos.y() > boardTop + boardSize) {
+        if ((pos.x() + (boardSize/8.0f * 0.4f)) < boardLeft ||
+            (pos.x() - (boardSize/8.0f * 0.4f)) > (boardLeft + boardSize) ||
+            (pos.y() + (boardSize/8.0f * 0.4f)) < boardTop ||
+            (pos.y() - (boardSize/8.0f * 0.4f)) > (boardTop + boardSize)) {
             break;
         }
     }

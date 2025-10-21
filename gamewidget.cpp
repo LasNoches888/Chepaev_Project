@@ -216,7 +216,10 @@ void GameWidget::mouseReleaseEvent(QMouseEvent *e)
     dragging = false;
 
     QPointF checkerPos = logic.getCheckerPosition(selectedChecker);
-    QPointF direction = checkerPos - e->pos();
+
+    // РЕЗЮМЕ: меняем знак направления - теперь движение задаётся движением мыши "вперёд",
+    // а не тянением назад. Раньше использовалось checkerPos - e->pos(), теперь e->pos() - checkerPos.
+    QPointF direction = e->pos() - checkerPos;
 
     // Умеренная сила игрока + пределы
     const float PLAYER_FORCE_MULT = 3.0f;
@@ -254,10 +257,19 @@ void GameWidget::onFrame()
     }
 
     // Проверка конца игры
+    static bool s_gameEndEmitted = false; // защита от повторного эмита события окончания игры
     if (logic.checkGameOver()) {
-        QString w = logic.winner();
-        if (w != "none") emit gameEnded(w);
+        if (!s_gameEndEmitted) {
+            QString w = logic.winner();
+            if (w != "none") {
+                emit gameEnded(w);
+                s_gameEndEmitted = true;
+            }
+        }
         return;
+    } else {
+        // Если игра снова активна (например, новая игра), сбрасываем флаг
+        s_gameEndEmitted = false;
     }
 
     // Ход бота если очередь за ним
@@ -281,8 +293,18 @@ void GameWidget::makeBotMove()
 
     // Попытка получить ход от движка
     BotMove bm = logic.findBestMove(Qt::black);
+    // скорость/мощность выстрела бота зависит от выбранной сложности:
+    float botSpeedMult = 1.0f;
+    switch (difficulty) {
+    case Easy:   botSpeedMult = 0.7f; break;
+    case Medium: botSpeedMult = 1.0f; break;
+    case Hard:   botSpeedMult = 1.35f; break;
+    default: break;
+    }
+
     if (bm.checkerIndex >= 0) {
-        logic.shoot(bm.checkerIndex, bm.force);
+        QPointF scaledForce = bm.force * botSpeedMult;
+        logic.shoot(bm.checkerIndex, scaledForce);
         playerTurn = true;
         return;
     }
@@ -358,6 +380,8 @@ void GameWidget::makeBotMove()
     });
 
     Candidate best = candidates.first();
-    logic.shoot(best.checkerIndex, best.force);
+    // увеличиваем/уменьшаем силу в соответствии с выбранной сложностью
+    QPointF finalForce = best.force * botSpeedMult;
+    logic.shoot(best.checkerIndex, finalForce);
     playerTurn = true;
 }
