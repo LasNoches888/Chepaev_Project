@@ -217,6 +217,80 @@ void GameLogic::handleCollisions()
     }
 }
 
+GameLogic::BotMove GameLogic::findBestMove(QColor botColor) const
+{
+    QVector<BotMove> possibleMoves;
+
+    // Получаем шашки бота
+    QVector<int> botCheckers = (botColor == Qt::black) ? getBlackCheckers() : getWhiteCheckers();
+
+    // Проверяем все возможные ходы
+    for (int checkerIndex : botCheckers) {
+        // Проверяем несколько направлений с разной силой
+        for (int angle = 0; angle < 360; angle += 30) {
+            for (int power = 100; power <= 300; power += 100) {
+                float rad = angle * 3.14159f / 180.0f;
+                QPointF force(cos(rad) * power, sin(rad) * power);
+
+                float score = evaluateMove(checkerIndex, force);
+
+                // Бонус за атаку вражеских шашек
+                QPointF predictedPos = predictPosition(
+                    getCheckerPosition(checkerIndex),
+                    force,
+                    2.0f
+                    );
+
+                // Проверяем столкновения с вражескими шашками
+                QColor enemyColor = (botColor == Qt::black) ? Qt::white : Qt::black;
+                for (int i = 0; i < checkers.size(); ++i) {
+                    if (checkers[i]->alive && checkers[i]->color == enemyColor) {
+                        QPointF enemyPos = checkers[i]->pos;
+                        float dist = length(predictedPos - enemyPos);
+                        const float cell = boardSize / 8.0f;
+                        const float radius = cell * 0.4f;
+
+                        if (dist < radius * 3) {
+                            score += 50; // Бонус за атаку врага
+                        }
+                    }
+                }
+
+                // Штраф за вылет за пределы
+                if (predictedPos.x() < boardLeft || predictedPos.x() > boardLeft + boardSize ||
+                    predictedPos.y() < boardTop || predictedPos.y() > boardTop + boardSize) {
+                    score -= 100;
+                }
+
+                // Бонус за оставание в пределах доски
+                if (predictedPos.x() >= boardLeft && predictedPos.x() <= boardLeft + boardSize &&
+                    predictedPos.y() >= boardTop && predictedPos.y() <= boardTop + boardSize) {
+                    score += 30;
+                }
+
+                possibleMoves.push_back({checkerIndex, force, score});
+            }
+        }
+    }
+
+    // Выбираем лучший ход
+    if (possibleMoves.isEmpty()) {
+        return {-1, QPointF(0, 0), -1000};
+    }
+
+    BotMove bestMove = possibleMoves.first();
+    for (const BotMove &move : possibleMoves) {
+        if (move.score > bestMove.score) {
+            bestMove = move;
+        }
+    }
+
+    qDebug() << "Лучший ход бота: шашка" << bestMove.checkerIndex
+             << "сила:" << bestMove.force << "очки:" << bestMove.score;
+
+    return bestMove;
+}
+
 void GameLogic::shoot(int checkerIndex, const QPointF &force)
 {
     if (gameOver || checkerIndex < 0 || checkerIndex >= checkers.size()) return;
@@ -385,3 +459,5 @@ QPointF GameLogic::predictPosition(const QPointF &startPos, const QPointF &start
 
     return pos;
 }
+
+

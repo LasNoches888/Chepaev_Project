@@ -13,6 +13,10 @@ public:
     explicit GameWidget(QWidget *parent = nullptr);
     QSize sizeHint() const override;
 
+    enum Difficulty { Easy = 0, Medium = 1, Hard = 2 };
+    void setBotDifficulty(Difficulty d) { difficulty = d; }
+    Difficulty botDifficulty() const { return difficulty; }
+
 signals:
     void gameEnded(const QString &winner);
     void backToMenuClicked();
@@ -37,6 +41,8 @@ private:
     QPointF dragStart;
     QPointF currentMouse;
     bool menuButtonHovered;
+
+    Difficulty difficulty = Medium; // по умолчанию
 
     void updateBoardGeometry();
 };

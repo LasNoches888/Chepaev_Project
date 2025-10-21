@@ -22,11 +22,21 @@ public:
     double blackWinPercent() const;
     double drawPercent() const;
 
+    // Новые статистики
+    int longestWinStreak() const { return m_longestWinStreak; }
+    int currentWinStreak() const { return m_currentWinStreak; }
+    QString lastWinner() const { return m_lastWinner; }
+
 private:
     int m_totalGames;
     int m_whiteWins;
     int m_blackWins;
     int m_draws;
+
+    // Дополнительные поля для расширенной статистики
+    int m_longestWinStreak;
+    int m_currentWinStreak;
+    QString m_lastWinner;
 
     void load();
     void save() const;

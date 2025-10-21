@@ -18,6 +18,20 @@ public:
         : pos(p), vel(0, 0), color(c), alive(true) {}
 };
 
+// ДОБАВИТЬ ПЕРЕД КЛАССОМ GameLogic
+struct BotMove {
+    int checkerIndex;
+    QPointF force;
+    float score;
+};
+
+// ДОБАВИТЬ ПЕРЕД КЛАССОМ GameLogic
+enum BotDifficulty {
+    Easy,
+    Medium,
+    Hard
+};
+
 class GameLogic
 {
 public:
@@ -31,7 +45,7 @@ public:
     void update(float dt);
     void drawBoard(QPainter *p);
     void shoot(int checkerIndex, const QPointF &force);
-    void updateCheckerPositions(); // НОВЫЙ МЕТОД
+    void updateCheckerPositions();
 
     bool checkGameOver() const;
     QString winner() const;
@@ -43,6 +57,11 @@ public:
     QVector<int> getWhiteCheckers() const;
     float evaluateMove(int checkerIndex, const QPointF &force) const;
 
+    // ДОБАВИТЬ НОВЫЕ МЕТОДЫ ДЛЯ УМНОГО БОТА
+    BotMove findBestMove(QColor botColor) const;
+    void setBotDifficulty(BotDifficulty difficulty) { botDifficulty = difficulty; }
+    BotDifficulty getBotDifficulty() const { return botDifficulty; }
+
     const QVector<std::shared_ptr<Checker>>& getCheckers() const { return checkers; }
     int getCheckerCount() const { return checkers.size(); }
     bool isCheckerAlive(int index) const {
@@ -53,6 +72,7 @@ private:
     QVector<std::shared_ptr<Checker>> checkers;
     QString winnerColor;
     bool gameOver;
+    BotDifficulty botDifficulty; // ДОБАВИТЬ ЭТУ СТРОКУ
 
     // Сохраняем исходные позиции шашек относительно доски
     QVector<QPointF> initialPositions;

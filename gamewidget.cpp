@@ -87,17 +87,139 @@ void GameWidget::makeBotMove()
         return;
     }
 
-    // Простой ход бота
-    int randomIndex = QRandomGenerator::global()->bounded(blackCheckers.size());
-    int checkerIndex = blackCheckers[randomIndex];
+    // Соберём белые шашки (цели) для эвристики
+    auto whiteCheckers = logic.getWhiteCheckers();
 
-    float angle = QRandomGenerator::global()->bounded(360);
-    float rad = angle * 3.14159f / 180.0f;
-    float forceValue = 100 + QRandomGenerator::global()->bounded(200);
-    QPointF force(cos(rad) * forceValue, sin(rad) * forceValue);
+    // Параметры случайности в зависимости от сложности
+    float angleNoiseDeg = 0.0f;
+    float forceNoisePct = 0.0f;
+    int candidatesToConsider = 1;
 
-    logic.shoot(checkerIndex, force);
-    playerTurn = true; // Возвращаем ход игроку
+    switch (difficulty) {
+    case Easy:
+        angleNoiseDeg = 40.0f;
+        forceNoisePct = 0.5f;
+        candidatesToConsider = qMax(1, static_cast<int>(blackCheckers.size()/2));
+        break;
+    case Medium:
+        angleNoiseDeg = 18.0f;
+        forceNoisePct = 0.25f;
+        candidatesToConsider = qMax(1, static_cast<int>(blackCheckers.size()/3));
+        break;
+    case Hard:
+        angleNoiseDeg = 6.0f;
+        forceNoisePct = 0.12f;
+        candidatesToConsider = qMax(1, static_cast<int>(blackCheckers.size()/4));
+        break;
+    }
+
+    // Оценим для каждой черной шашки «очень простую» эвристику: цель — ближайшая белая
+    struct Candidate { int idx; QPointF target; float score; QPointF force; };
+    QVector<Candidate> candList;
+    candList.reserve(blackCheckers.size());
+
+    for (int bi : blackCheckers) {
+        if (!logic.isCheckerAlive(bi)) continue;
+        QPointF posB = logic.getCheckerPosition(bi);
+
+        // Найдём ближайшую белую (если нет белых — стреляем в центр доски с небольшим разбросом)
+        QPointF aimTarget;
+        if (!whiteCheckers.empty()) {
+            float bestDist = std::numeric_limits<float>::infinity();
+            int bestW = -1;
+            for (int wi : whiteCheckers) {
+                if (!logic.isCheckerAlive(wi)) continue;
+                QPointF posW = logic.getCheckerPosition(wi);
+                float d = QLineF(posB, posW).length();
+                if (d < bestDist) { bestDist = d; bestW = wi; }
+            }
+            if (bestW >= 0) {
+                aimTarget = logic.getCheckerPosition(bestW);
+                // Немного сместим цель в сторону между двумя ближайшими белыми (шанс выполнить комбинацию)
+                if (whiteCheckers.size() >= 2) {
+                    // найти вторую ближайшую
+                    float secondDist = std::numeric_limits<float>::infinity();
+                    int secondW = -1;
+                    for (int wi : whiteCheckers) {
+                        if (!logic.isCheckerAlive(wi)) continue;
+                        QPointF posW = logic.getCheckerPosition(wi);
+                        float d = QLineF(posB, posW).length();
+                        if (d < secondDist && posW != aimTarget) { secondDist = d; secondW = wi; }
+                    }
+                    if (secondW >= 0) {
+                        QPointF pos2 = logic.getCheckerPosition(secondW);
+                        aimTarget = (aimTarget + pos2) / 2.0; // усреднить — попробовать комбинацию
+                    }
+                }
+            } else {
+                aimTarget = QPointF(logic.boardLeft + logic.boardSize/2.0f, logic.boardTop + logic.boardSize/2.0f);
+            }
+        } else {
+            aimTarget = QPointF(logic.boardLeft + logic.boardSize/2.0f, logic.boardTop + logic.boardSize/2.0f);
+        }
+
+        // Базовый вектор силы: направлен от шашки к цели
+        QPointF dir = aimTarget - posB;
+        float dist = qMax(1.0f, std::sqrt(dir.x()*dir.x() + dir.y()*dir.y()));
+
+        // Базовая сила в зависимости от расстояния (подогнать под физику игры)
+        float baseForce = qBound(60.0f, dist * 0.8f, 300.0f);
+
+        // Нормализуем направление
+        QPointF unitDir = dir / dist;
+
+        QPointF baseForceVec = unitDir * baseForce;
+
+        // Оценочная функция: предпочтительнее близкие и направленные удары
+        float score = 1000.0f / (dist + 1.0f);
+
+        candList.append({bi, aimTarget, score, baseForceVec});
+    }
+
+    // Сортируем кандидатов по убыванию score
+    std::sort(candList.begin(), candList.end(), [](const Candidate &a, const Candidate &b){
+        return a.score > b.score;
+    });
+
+    // Рассматриваем top-N кандидатов, выбираем лучший с учётом случайности
+    Candidate chosen = candList.first();
+    int topN = qMin(candidatesToConsider, candList.size());
+    float bestAdjustedScore = -1e9;
+    for (int i = 0; i < topN; ++i) {
+        Candidate c = candList[i];
+
+        // Применим случайность в угле и силе (меньше шума на высоких уровнях сложности)
+        float angleOffset = QRandomGenerator::global()->bounded(-angleNoiseDeg, angleNoiseDeg);
+        float angleRad = angleOffset * 3.14159265f / 180.0f;
+
+        QPointF f = c.force;
+        float fx = f.x();
+        float fy = f.y();
+        // поворот вектора
+        float rotatedX = fx * qCos(angleRad) - fy * qSin(angleRad);
+        float rotatedY = fx * qSin(angleRad) + fy * qCos(angleRad);
+
+        float noiseFactor = 1.0f + (QRandomGenerator::global()->bounded(-forceNoisePct, forceNoisePct));
+        rotatedX *= noiseFactor;
+        rotatedY *= noiseFactor;
+
+        // скор скоринга: чем ближе направление к идеалу и чем больше сила — тем лучше
+        float adjustedScore = c.score * (1.0f + 0.001f * qSqrt(rotatedX*rotatedX + rotatedY*rotatedY));
+        // небольшая рандомизация предпочтений
+        adjustedScore += QRandomGenerator::global()->bounded(-0.2f, 0.2f);
+
+        if (adjustedScore > bestAdjustedScore) {
+            bestAdjustedScore = adjustedScore;
+            chosen = c;
+            chosen.force = QPointF(rotatedX, rotatedY);
+        }
+    }
+
+    // Выполняем выстрел выбранной шашкой
+    logic.shoot(chosen.idx, chosen.force);
+
+    // Возвращаем ход игроку
+    playerTurn = true;
 }
 
 void GameWidget::paintEvent(QPaintEvent *)
