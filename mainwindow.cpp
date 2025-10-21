@@ -11,14 +11,21 @@
 #include <QPushButton>
 #include <QGridLayout>
 #include <QResizeEvent>
+#include <QComboBox>
+#include <QSpacerItem>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
     stack(new QStackedWidget(this)),
     menuPage(nullptr),
-    gamePage(nullptr)
+    gamePage(nullptr),
+    btnNewGame(nullptr),
+    btnResetStats(nullptr),
+    btnExit(nullptr),
+    difficultyCombo(nullptr),
+    statsLabel(nullptr)
 {
-    setWindowTitle("Чепаев");
+    setWindowTitle(QString::fromUtf8("Чепаев"));
     resize(900, 900);
 
     createMenuPage();
@@ -39,6 +46,41 @@ void MainWindow::resizeEvent(QResizeEvent *event)
         if (bg) {
             bg->update();
         }
+    }
+}
+
+static QString formatStatsText(const StatsManager &stats)
+{
+    if (stats.totalGames() == 0) {
+        // красивое приглашение начать первую игру
+        return QString::fromUtf8(
+            "<div style='text-align:center;'>"
+            "<h2 style='color:#f1c40f; margin:6px;'>Начните свою первую игру</h2>"
+            "<p style='color:#ecf0f1; margin:0;'>Нажмите \"Новая игра\", чтобы сыграть — статистика появится после первой партии.</p>"
+            "</div>"
+            );
+    } else {
+        return QString::fromUtf8(
+                   "<div style='color:white;'>"
+                   "<b>Статистика:</b><br>"
+                   "Всего игр: %1<br>"
+                   "Белые победы: %2 (%5%)<br>"
+                   "Чёрные победы: %3 (%6%)<br>"
+                   "Ничьи: %4 (%7%)<br>"
+                   "Текущая серия: %8<br>"
+                   "Макс. серия побед: %9<br>"
+                   "Последний победитель: %10"
+                   "</div>"
+                   ).arg(stats.totalGames())
+            .arg(stats.whiteWins())
+            .arg(stats.blackWins())
+            .arg(stats.draws())
+            .arg(QString::number(stats.whiteWinPercent(), 'f', 1))
+            .arg(QString::number(stats.blackWinPercent(), 'f', 1))
+            .arg(QString::number(stats.drawPercent(), 'f', 1))
+            .arg(stats.currentWinStreak())
+            .arg(stats.longestWinStreak())
+            .arg(stats.lastWinner().isEmpty() ? QString::fromUtf8("—") : stats.lastWinner());
     }
 }
 
@@ -67,76 +109,74 @@ void MainWindow::createMenuPage()
     contentContainer->setObjectName("contentContainer");
     contentContainer->setStyleSheet(
         "QWidget#contentContainer {"
-        "  background: rgba(0, 0, 0, 150);"
-        "  border-radius: 15px;"
+        "  background: rgba(0, 0, 0, 160);"
+        "  border-radius: 16px;"
         "}"
         );
 
     QVBoxLayout *contentLayout = new QVBoxLayout(contentContainer);
-    contentLayout->setSpacing(20);
-    contentLayout->setContentsMargins(30, 30, 30, 30);
+    contentLayout->setSpacing(14);
+    contentLayout->setContentsMargins(28, 28, 28, 28);
 
     // Заголовок
-    QLabel *titleLabel = new QLabel("🎯 ЧЕПАЕВ");
+    QLabel *titleLabel = new QLabel(QString::fromUtf8("\U0001F3AF ЧЕПАЕВ"));
     titleLabel->setAlignment(Qt::AlignCenter);
-    titleLabel->setStyleSheet("font-size: 32px; font-weight: bold; color: #f39c12; margin-bottom: 20px;");
+    titleLabel->setStyleSheet("font-size: 36px; font-weight: bold; color: #f39c12; margin-bottom: 6px;");
     contentLayout->addWidget(titleLabel);
 
-    // Статистика (простая надпись) - ДОБАВЛЕНО ОБЪЕКТНОЕ ИМЯ
-    StatsManager stats;
-    QLabel *statsLabel = new QLabel();
-    statsLabel->setObjectName("statsLabel"); // ВАЖНО: добавляем объектное имя
-    if (stats.totalGames() > 0) {
-        statsLabel->setText(
-            QString("📊 Статистика: ⚪ %1%  ⚫ %2%  🤝 %3%")
-                .arg(stats.whiteWinPercent(), 0, 'f', 1)
-                .arg(stats.blackWinPercent(), 0, 'f', 1)
-                .arg(stats.drawPercent(), 0, 'f', 1)
-            );
-    } else {
-        statsLabel->setText("🎯 Сыграйте первую игру!");
+    // Статистика (используем QLabel с поддержкой HTML)
+    statsLabel = new QLabel(contentContainer);
+    statsLabel->setObjectName("statsLabel");
+    statsLabel->setStyleSheet("font-size: 14px;");
+    statsLabel->setWordWrap(true);
+    statsLabel->setTextFormat(Qt::RichText);
+
+    // Загрузка данных статистики и установка текста
+    {
+        StatsManager stats;
+        statsLabel->setText(formatStatsText(stats));
     }
-    statsLabel->setAlignment(Qt::AlignCenter);
-    statsLabel->setStyleSheet("font-size: 16px; color: #ecf0f1; font-weight: bold; padding: 10px;");
     contentLayout->addWidget(statsLabel);
 
-    // Кнопки
-    btnNewGame = new QPushButton("🎮 Новая игра");
-    btnResetStats = new QPushButton("🔄 Сбросить статистику");
-    btnExit = new QPushButton("🚪 Выход");
+    // Селектор сложности
+    difficultyCombo = new QComboBox(contentContainer);
+    difficultyCombo->setStyleSheet(
+        "QComboBox { background: white; padding: 8px; border-radius: 6px; }"
+        "QComboBox QAbstractItemView { selection-background-color: #f39c12; }"
+        );
+    difficultyCombo->addItem(QString::fromUtf8("Легко"));
+    difficultyCombo->addItem(QString::fromUtf8("Средне"));
+    difficultyCombo->addItem(QString::fromUtf8("Сложно"));
+    difficultyCombo->setCurrentIndex(1); // по умолчанию Medium
+    contentLayout->addWidget(difficultyCombo);
 
-    // Стили кнопок
-    QString buttonStyle =
-        "QPushButton {"
-        "  font-size: 18px;"
-        "  background-color: rgba(255,255,255,220);"
-        "  border-radius: 10px;"
-        "  font-weight: bold;"
-        "  min-height: 50px;"
-        "  color: black;"
-        "  padding: 10px;"
-        "}"
-        "QPushButton:hover {"
-        "  background-color: rgba(255,255,255,180);"
-        "}";
+    // Большие стильные кнопки
+    auto makeButton = [&](const QString &text)->QPushButton* {
+        QPushButton *b = new QPushButton(text, contentContainer);
+        b->setMinimumHeight(48);
+        b->setCursor(Qt::PointingHandCursor);
+        b->setStyleSheet(
+            "QPushButton {"
+            "  color: white;"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f39c12, stop:1 #e67e22);"
+            "  border: none;"
+            "  border-radius: 10px;"
+            "  font-size: 16px;"
+            "  padding: 8px 16px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffb85a, stop:1 #f39c12);"
+            "}"
+            "QPushButton:pressed {"
+            "  background: #d35400;"
+            "}"
+            );
+        return b;
+    };
 
-    QString resetButtonStyle =
-        "QPushButton {"
-        "  font-size: 16px;"
-        "  background-color: rgba(231, 76, 60, 200);"
-        "  border-radius: 10px;"
-        "  font-weight: bold;"
-        "  min-height: 40px;"
-        "  color: white;"
-        "  padding: 8px;"
-        "}"
-        "QPushButton:hover {"
-        "  background-color: rgba(231, 76, 60, 150);"
-        "}";
-
-    btnNewGame->setStyleSheet(buttonStyle);
-    btnResetStats->setStyleSheet(resetButtonStyle);
-    btnExit->setStyleSheet(buttonStyle);
+    btnNewGame = makeButton(QString::fromUtf8("Новая игра"));
+    btnResetStats = makeButton(QString::fromUtf8("Сбросить статистику"));
+    btnExit = makeButton(QString::fromUtf8("Выход"));
 
     contentLayout->addWidget(btnNewGame);
     contentLayout->addWidget(btnResetStats);
@@ -148,8 +188,8 @@ void MainWindow::createMenuPage()
     centerLayout->addWidget(contentContainer);
     centerLayout->addStretch();
 
-    contentContainer->setMinimumWidth(400);
-    contentContainer->setMaximumWidth(500);
+    contentContainer->setMinimumWidth(420);
+    contentContainer->setMaximumWidth(540);
 
     // Подключения
     connect(btnNewGame, &QPushButton::clicked, this, &MainWindow::startNewGame);
@@ -159,7 +199,20 @@ void MainWindow::createMenuPage()
 
 void MainWindow::startNewGame()
 {
+    // Создаём виджет игры
     gamePage = new GameWidget(this);
+
+    // Применяем выбранную сложность
+    if (difficultyCombo) {
+        int idx = difficultyCombo->currentIndex();
+        switch (idx) {
+        case 0: gamePage->setBotDifficulty(GameWidget::Easy); break;
+        case 1: gamePage->setBotDifficulty(GameWidget::Medium); break;
+        case 2: gamePage->setBotDifficulty(GameWidget::Hard); break;
+        default: gamePage->setBotDifficulty(GameWidget::Medium); break;
+        }
+    }
+
     stack->addWidget(gamePage);
     stack->setCurrentWidget(gamePage);
 
@@ -170,8 +223,8 @@ void MainWindow::startNewGame()
 void MainWindow::resetStats()
 {
     QMessageBox msgBox(this);
-    msgBox.setWindowTitle("Сброс статистики");
-    msgBox.setText("Вы уверены, что хотите сбросить всю статистику?");
+    msgBox.setWindowTitle(QString::fromUtf8("Сброс статистики"));
+    msgBox.setText(QString::fromUtf8("Вы уверены, что хотите сбросить всю статистику?"));
     msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
     msgBox.setDefaultButton(QMessageBox::No);
 
@@ -179,11 +232,7 @@ void MainWindow::resetStats()
         StatsManager stats;
         stats.reset();
 
-        // ОБНОВЛЕННЫЙ ПОИСК - используем то же объектное имя
-        QLabel *statsLabel = menuPage->findChild<QLabel*>("statsLabel");
-        if (statsLabel) {
-            statsLabel->setText("🎯 Сыграйте первую игру!");
-        }
+        if (statsLabel) statsLabel->setText(formatStatsText(stats));
     }
 }
 
@@ -198,17 +247,11 @@ void MainWindow::backToMenuFromGame()
 
     // Обновляем статистику при возврате в меню
     StatsManager stats;
-    QLabel *statsLabel = menuPage->findChild<QLabel*>("statsLabel");
     if (statsLabel) {
+        statsLabel->setText(formatStatsText(stats));
+        // Если сыграна хотя бы одна игра, после первой покажем призыв "Сыграйте ещё!" рядом со статистикой
         if (stats.totalGames() > 0) {
-            statsLabel->setText(
-                QString("📊 Статистика: ⚪ %1%  ⚫ %2%  🤝 %3%")
-                    .arg(stats.whiteWinPercent(), 0, 'f', 1)
-                    .arg(stats.blackWinPercent(), 0, 'f', 1)
-                    .arg(stats.drawPercent(), 0, 'f', 1)
-                );
-        } else {
-            statsLabel->setText("🎯 Сыграйте первую игру!");
+            // можно дополнительно добавить визуальное напоминание
         }
     }
 }
@@ -216,42 +259,19 @@ void MainWindow::backToMenuFromGame()
 void MainWindow::handleGameEnd(const QString &winner)
 {
     QString text;
-    if (winner == "white") text = "⚪ Белые победили!";
-    else if (winner == "black") text = "⚫ Чёрные победили!";
-    else text = "🤝 Ничья!";
+    if (winner == "white") text = QString::fromUtf8("\u26AA Белые победили!");
+    else if (winner == "black") text = QString::fromUtf8("\u26AB Чёрные победили!");
+    else text = QString::fromUtf8("\U0001F91D Ничья!");
 
     StatsManager stats;
     stats.addGameResult(winner);
 
     QMessageBox msgBox(this);
-    msgBox.setWindowTitle("Игра окончена");
+    msgBox.setWindowTitle(QString::fromUtf8("Игра окончена"));
     msgBox.setText(text);
-    msgBox.setStyleSheet(
-        "QMessageBox {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2c3e50, stop:1 #34495e);"
-        "  color: white;"
-        "}"
-        "QMessageBox QLabel {"
-        "  color: white;"
-        "  font-size: 18px;"
-        "  font-weight: bold;"
-        "}"
-        "QMessageBox QPushButton {"
-        "  background-color: #3498db;"
-        "  color: white;"
-        "  border: none;"
-        "  border-radius: 5px;"
-        "  padding: 8px 16px;"
-        "  font-size: 14px;"
-        "  font-weight: bold;"
-        "  min-width: 80px;"
-        "}"
-        "QMessageBox QPushButton:hover {"
-        "  background-color: #2980b9;"
-        "}"
-        );
     msgBox.exec();
 
+    // возвращаем в меню и обновляем статистику (текст теперь покажет, что уже есть игры)
     backToMenuFromGame();
 }
 

@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QTimer>
+#include <QPixmap>
 #include "gamelogic.h"
 
 class GameWidget : public QWidget
@@ -14,7 +15,7 @@ public:
     QSize sizeHint() const override;
 
     enum Difficulty { Easy = 0, Medium = 1, Hard = 2 };
-    void setBotDifficulty(Difficulty d) { difficulty = d; }
+    void setBotDifficulty(Difficulty d); // синхронизирует с GameLogic
     Difficulty botDifficulty() const { return difficulty; }
 
 signals:
@@ -43,6 +44,8 @@ private:
     bool menuButtonHovered;
 
     Difficulty difficulty = Medium; // по умолчанию
+
+    QPixmap bgPixmap; // фон для игры (тот же, что в меню)
 
     void updateBoardGeometry();
 };

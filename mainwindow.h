@@ -5,6 +5,7 @@
 #include <QStackedWidget>
 #include <QPushButton>
 #include <QLabel>
+#include <QComboBox>
 
 class GameWidget;
 
@@ -34,6 +35,9 @@ private:
     QPushButton *btnNewGame;
     QPushButton *btnResetStats;  // Новая кнопка
     QPushButton *btnExit;
+
+    QComboBox *difficultyCombo; // селектор сложности бота
+    QLabel *statsLabel;         // отображаемая статистика в меню
 
     void createMenuPage();
 };

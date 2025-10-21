@@ -4,7 +4,7 @@
 
 GameLogic::GameLogic()
     : boardLeft(100), boardTop(100), boardSize(600),
-    winnerColor(""), gameOver(false)
+    winnerColor(""), gameOver(false), botDifficulty(Medium)
 {
 }
 
@@ -84,8 +84,7 @@ void GameLogic::updateCheckerPositions()
     // Обновляем только если шашки не двигаются
     if (isMoving()) return;
 
-    const float cell = boardSize / 8.0f;
-
+    // используем initialPositions, boardLeft/boardTop/boardSize напрямую
     for (int i = 0; i < checkers.size(); ++i) {
         if (!checkers[i]->alive) continue;
 
@@ -163,16 +162,19 @@ void GameLogic::update(float dt)
         // Обновляем позицию
         c->pos += c->vel * dt;
 
-        // Границы поля - вылетают за пределы (ИСПРАВЛЕНО)
-        if (c->pos.x() < boardLeft - 50 || c->pos.x() > boardLeft + boardSize + 50 ||
-            c->pos.y() < boardTop - 50 || c->pos.y() > boardTop + boardSize + 50)
+        // Жёсткая проверка выхода за границы доски: если вышли за пределы — помечаем как неактивную
+        if (c->pos.x() < boardLeft || c->pos.x() > boardLeft + boardSize ||
+            c->pos.y() < boardTop  || c->pos.y() > boardTop  + boardSize)
         {
             c->alive = false;
-            qDebug() << "Шашка вылетела за пределы. Цвет:" << (c->color == Qt::white ? "белая" : "черная");
+            c->vel = QPointF(0,0); // обнуляем скорость, чтобы объект не двигался дальше
+            qDebug() << "Шашка вылетела за пределы и помечена как неактивная. Цвет:"
+                     << (c->color == Qt::white ? "белая" : "черная") << "поз:" << c->pos;
+            continue;
         }
     }
 
-    // Обрабатываем столкновения
+    // Обрабатываем столкновения (только между живыми шашками)
     handleCollisions();
 }
 
@@ -217,7 +219,7 @@ void GameLogic::handleCollisions()
     }
 }
 
-GameLogic::BotMove GameLogic::findBestMove(QColor botColor) const
+BotMove GameLogic::findBestMove(QColor botColor) const
 {
     QVector<BotMove> possibleMoves;
 
@@ -459,5 +461,3 @@ QPointF GameLogic::predictPosition(const QPointF &startPos, const QPointF &start
 
     return pos;
 }
-
-
