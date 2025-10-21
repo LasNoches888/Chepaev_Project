@@ -47,6 +47,10 @@ public:
     void shoot(int checkerIndex, const QPointF &force);
     void updateCheckerPositions();
 
+    // Новый метод: масштабирование/пересчёт позиций при смене геометрии доски
+    void rescaleBoard(float oldLeft, float oldTop, float oldSize,
+                      float newLeft, float newTop, float newSize);
+
     bool checkGameOver() const;
     QString winner() const;
     bool isMoving() const;
